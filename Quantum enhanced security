@@ -1,7 +1,6 @@
 from qiskit import QuantumCircuit, Aer, transpile
-from qiskit.quantum_info import Statevector, Operator, partial_trace, state_fidelity
 import hashlib
-import random
+import secrets
 import json
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -10,36 +9,30 @@ import os
 import base64
 
 # Define Quantum Simulator
-simulator = Aer.get_backend('statevector_simulator')
+simulator = Aer.get_backend('qasm_simulator')
 
 # Define Quantum Key Distribution Protocol functions
 def generate_bb84_key(length=8):
-    return ''.join(str(random.choice([0, 1])) for _ in range(length))
+    return ''.join(str(secrets.choice([0, 1])) for _ in range(length))
 
 def exchange_bb84_key(own_key):
-    partner_basis = ''.join(random.choice(['X', 'Z']) for _ in range(len(own_key)))
-    partner_key = [bit if partner_basis[i] == 'X' else str(random.choice([0, 1])) for i, bit in enumerate(own_key)]
+    partner_basis = ''.join(secrets.choice(['X', 'Z']) for _ in range(len(own_key)))
+    partner_key = [bit if partner_basis[i] == 'X' else str(secrets.choice([0, 1])) for i, bit in enumerate(own_key)]
     return partner_key, partner_basis
 
 # Define Quantum Repeaters
-def hxxh_operation(qubit1, qubit2):
-    # Create a quantum operator that performs HXXH on two qubits
-    hxxh = Operator([
-        [0.5, 0.5, 0.5, -0.5],
-        [0.5, -0.5, -0.5, -0.5],
-        [0.5, -0.5, 0.5, 0.5],
-        [0.5, 0.5, -0.5, 0.5]
-    ])
-    # Apply the operator to the qubits
-    return hxxh.compose([qubit1, qubit2])
+def hxxh_operation(qc, qubit1, qubit2):
+    qc.h(qubit1)
+    qc.x(qubit1)
+    qc.x(qubit2)
+    qc.h(qubit1)
+    qc.measure_all()
 
-def perform_quantum_repeater(statevector, qubit1, qubit2, num_repeats):
+def perform_quantum_repeater(qc, qubit1, qubit2, num_repeats):
     for _ in range(num_repeats):
-        # Apply the HXXH operation to the qubits
-        statevector = hxxh_operation(qubit1, qubit2).evolve(statevector)
+        hxxh_operation(qc, qubit1, qubit2)
         # Implement quantum repeater mechanism here
         # In this simplified example, we repeat the HXXH operation
-    return statevector
 
 # Define Cryptography Encryption and Decryption
 def encrypt_message(message, key):
@@ -85,10 +78,10 @@ if __name__ == "__main__":
     print("Quantum Key:", quantum_key)
     print("Partner Key:", partner_key)
 
-    # Perform SHA-256 hash using f-strings instead of string concatenation
+    # Perform SHA-256 hash
     data = "YourDataHere"  # Replace with your actual data
     nonce = 0
-    data_with_nonce = f"{data}{nonce}"
+    data_with_nonce = data + str(nonce)
     hash_result = hashlib.sha256(data_with_nonce.encode()).hexdigest()
 
     # Print the SHA-256 Hash
@@ -103,18 +96,12 @@ if __name__ == "__main__":
     print("Encrypted Message:", encrypted_message)
     print("Decrypted Message:", decrypted_message)
 
-    # Add Quantum Repeater using statevector simulator
+    # Add Quantum Repeater
     qc = QuantumCircuit(2)
-    statevector = Statevector.from_instruction(qc)  # Get the initial statevector
-    statevector = perform_quantum_repeater(statevector, 0, 1, num_repeats=3)  # Example: 3 repeats
+    perform_quantum_repeater(qc, 0, 1, num_repeats=3)  # Example: 3 repeats
 
-    # Analyze the quantum repeater output
-    # Trace out the second qubit and get the reduced density matrix of the first qubit
-    rho = partial_trace(statevector, [1])
-    # Calculate the fidelity between the final state and the ideal state |+>
-    fidelity = state_fidelity(rho, Statevector([1 / 2 ** 0.5, 1 / 2 ** 0.5]))
-    # Print the fidelity
-    print("Fidelity:", fidelity)
+    # Clean up quantum circuit if necessary
+    qc.clear()
 
     # Encode the derived passphrase key as Base64 for JSON serialization
     derived_passphrase_key_base64 = base64.b64encode(derived_passphrase_key).decode('utf-8')
@@ -125,10 +112,12 @@ if __name__ == "__main__":
         "Quantum Key": quantum_key,
         "Partner Key": partner_key,
         "SHA-256 Hash": hash_result,
-        "Encrypted Message": encrypted_message.decode('utf-8'),
-        "Decrypted Message": decrypted_message,
-        "Fidelity": fidelity,
-        "Derived Passphrase Key": derived_passphrase_key_base64
+        "Encrypted Message": decrypted_message,  # Use the decrypted message as-is
+        "Derived Passphrase Key (Base64)": derived_passphrase_key_base64
     }
-    with open("results.json", "w") as f:
-        json.dump(results, f, indent=4)
+
+    with open("results.json", "w") as results_file:
+        json.dump(results, results_file)
+
+    # Optionally, you can print a confirmation message
+    print("Results saved to results.json")
