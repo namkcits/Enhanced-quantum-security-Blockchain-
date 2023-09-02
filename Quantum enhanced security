@@ -1,0 +1,134 @@
+from qiskit import QuantumCircuit, Aer, transpile
+from qiskit.quantum_info import Statevector, Operator, partial_trace, state_fidelity
+import hashlib
+import random
+import json
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import os
+import base64
+
+# Define Quantum Simulator
+simulator = Aer.get_backend('statevector_simulator')
+
+# Define Quantum Key Distribution Protocol functions
+def generate_bb84_key(length=8):
+    return ''.join(str(random.choice([0, 1])) for _ in range(length))
+
+def exchange_bb84_key(own_key):
+    partner_basis = ''.join(random.choice(['X', 'Z']) for _ in range(len(own_key)))
+    partner_key = [bit if partner_basis[i] == 'X' else str(random.choice([0, 1])) for i, bit in enumerate(own_key)]
+    return partner_key, partner_basis
+
+# Define Quantum Repeaters
+def hxxh_operation(qubit1, qubit2):
+    # Create a quantum operator that performs HXXH on two qubits
+    hxxh = Operator([
+        [0.5, 0.5, 0.5, -0.5],
+        [0.5, -0.5, -0.5, -0.5],
+        [0.5, -0.5, 0.5, 0.5],
+        [0.5, 0.5, -0.5, 0.5]
+    ])
+    # Apply the operator to the qubits
+    return hxxh.compose([qubit1, qubit2])
+
+def perform_quantum_repeater(statevector, qubit1, qubit2, num_repeats):
+    for _ in range(num_repeats):
+        # Apply the HXXH operation to the qubits
+        statevector = hxxh_operation(qubit1, qubit2).evolve(statevector)
+        # Implement quantum repeater mechanism here
+        # In this simplified example, we repeat the HXXH operation
+    return statevector
+
+# Define Cryptography Encryption and Decryption
+def encrypt_message(message, key):
+    fernet = Fernet(key)
+    return fernet.encrypt(message.encode())
+
+def decrypt_message(encrypted_message, key):
+    fernet = Fernet(key)
+    return fernet.decrypt(encrypted_message).decode()
+
+# Function to derive a key from a passphrase
+def derive_key_from_passphrase(passphrase, salt):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        iterations=100000,  # You can adjust the number of iterations
+        salt=salt,
+        length=32  # Key length
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))
+
+# Main program
+if __name__ == "__main__":
+    owner_name = input("Enter your name: ")  # Collect the owner's name
+
+    # Wallet Security Key (Private Key from Blockchain Wallet)
+    wallet_security_key = "YourWalletPrivateKey".encode('utf-8')  # Convert to bytes
+
+    # Passphrase
+    passphrase = input("Enter your passphrase: ")  # User input
+
+    # Step 2: Derive a key from the passphrase
+    salt = os.urandom(16)  # Random salt
+    derived_passphrase_key = derive_key_from_passphrase(passphrase, salt)
+
+    # Step 3: Qubit Naming
+    qubit_naming_seed = wallet_security_key + derived_passphrase_key
+
+    # Generate keys
+    quantum_key = generate_bb84_key()
+    partner_key, partner_basis = exchange_bb84_key(quantum_key)
+
+    # Print keys
+    print("Quantum Key:", quantum_key)
+    print("Partner Key:", partner_key)
+
+    # Perform SHA-256 hash using f-strings instead of string concatenation
+    data = "YourDataHere"  # Replace with your actual data
+    nonce = 0
+    data_with_nonce = f"{data}{nonce}"
+    hash_result = hashlib.sha256(data_with_nonce.encode()).hexdigest()
+
+    # Print the SHA-256 Hash
+    print("SHA-256 Hash:", hash_result)
+
+    # Step 4: Perform encryption and decryption using the derived passphrase key
+    message = "Hello friend, this is for you. God bless!"  # Replace with your secret message
+    encrypted_message = encrypt_message(message, derived_passphrase_key)
+    decrypted_message = decrypt_message(encrypted_message, derived_passphrase_key)
+
+    # Print the encrypted and decrypted messages
+    print("Encrypted Message:", encrypted_message)
+    print("Decrypted Message:", decrypted_message)
+
+    # Add Quantum Repeater using statevector simulator
+    qc = QuantumCircuit(2)
+    statevector = Statevector.from_instruction(qc)  # Get the initial statevector
+    statevector = perform_quantum_repeater(statevector, 0, 1, num_repeats=3)  # Example: 3 repeats
+
+    # Analyze the quantum repeater output
+    # Trace out the second qubit and get the reduced density matrix of the first qubit
+    rho = partial_trace(statevector, [1])
+    # Calculate the fidelity between the final state and the ideal state |+>
+    fidelity = state_fidelity(rho, Statevector([1 / 2 ** 0.5, 1 / 2 ** 0.5]))
+    # Print the fidelity
+    print("Fidelity:", fidelity)
+
+    # Encode the derived passphrase key as Base64 for JSON serialization
+    derived_passphrase_key_base64 = base64.b64encode(derived_passphrase_key).decode('utf-8')
+
+    # Save results to a JSON file
+    results = {
+        "Owner Name": owner_name,
+        "Quantum Key": quantum_key,
+        "Partner Key": partner_key,
+        "SHA-256 Hash": hash_result,
+        "Encrypted Message": encrypted_message.decode('utf-8'),
+        "Decrypted Message": decrypted_message,
+        "Fidelity": fidelity,
+        "Derived Passphrase Key": derived_passphrase_key_base64
+    }
+    with open("results.json", "w") as f:
+        json.dump(results, f, indent=4)
